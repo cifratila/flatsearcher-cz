@@ -1,0 +1,1 @@
+# Stdlib only (urllib, json, re, concurrent.futures). No pip deps required.
