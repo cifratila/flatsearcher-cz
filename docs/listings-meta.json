@@ -1,0 +1,71 @@
+{
+  "generated": "2026-10-02T10:11:05.166147+02:00",
+  "filters": {
+    "offer": "prodej",
+    "dispositions": [
+      "1+kk",
+      "1+1",
+      "2+kk",
+      "2+1",
+      "3+kk",
+      "3+1",
+      "4+kk",
+      "4+1"
+    ],
+    "ownership": "osobní only (exclude družstevní / unclear)",
+    "floor_rule": "Portal floorNumber/etage 1 = 1.NP = přízemí. KEEP floor >= 2. Mezonet/internal stairs INCLUDED (has_internal_stairs=true). Unknown floor → separate section.",
+    "regions": [
+      "karlin",
+      "prague",
+      "decin",
+      "usti"
+    ],
+    "sources": [
+      "sreality",
+      "bezrealitky",
+      "idnes (secondary)"
+    ],
+    "dedupe": "street + m2 + price_czk across portals"
+  },
+  "counts": {
+    "total_scanned": 4709,
+    "kept": 3230,
+    "floor_unknown": 0,
+    "by_bucket": {
+      "karlin": 89,
+      "prague": 2979,
+      "decin": 36,
+      "usti": 126
+    },
+    "floor_unknown_by_bucket": {
+      "karlin": 0,
+      "prague": 0,
+      "decin": 0,
+      "usti": 0
+    },
+    "excluded": {
+      "družstevní": 45,
+      "unclear_ownership": 6,
+      "přízemí/suterén": 1213,
+      "atypical": 1,
+      "geo": 0,
+      "disposition": 0,
+      "bad_area": 2
+    },
+    "dedupe_removed": 212,
+    "by_source": {
+      "sreality": 4204,
+      "bezrealitky": 505
+    }
+  },
+  "parts": [
+    "listings-karlin.json",
+    "listings-decin.json",
+    "listings-usti.json",
+    "listings-prague-1.json",
+    "listings-prague-2.json",
+    "listings-prague-3.json",
+    "listings-prague-4.json",
+    "listings-prague-5.json"
+  ]
+}
