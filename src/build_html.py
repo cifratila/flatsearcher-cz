@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""Build dark multi-view HTML catalog into site/index.html (+ mirrors)."""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from . import config
+
+MIRROR_WORKSPACE = Path("/workspace/cz-flats-2026-10-02/index.html")
+MIRROR_KARLIN = Path("/workspace/karlin-osobni-multi-region.html")
+
+
+TEMPLATE = r'''<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>FlatSearcher CZ — Karlín · Praha · Děčín · Ústí</title>
+<style>
+:root {
+  --bg:#0f1419; --panel:#1a2332; --panel2:#243044; --text:#e7ecf3; --muted:#8b9bb4;
+  --accent:#5b9fd4; --accent2:#3dd68c; --warn:#e6b35a; --danger:#e06c75;
+  --border:#2c3a50; --row:#151d29; --row-alt:#182232;
+}
+* { box-sizing: border-box; }
+body {
+  margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background:var(--bg); color:var(--text); line-height:1.45;
+}
+header {
+  padding:1.1rem 1.25rem 0.75rem; border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,#152033,var(--bg));
+}
+header h1 { margin:0 0 .25rem; font-size:1.35rem; font-weight:650; }
+header .meta { color:var(--muted); font-size:.85rem; }
+.tabs { display:flex; gap:.4rem; flex-wrap:wrap; padding:0.85rem 1.25rem 0; }
+.tab {
+  background:var(--panel); color:var(--muted); border:1px solid var(--border);
+  padding:.45rem .9rem; border-radius:999px; cursor:pointer; font-size:.9rem;
+}
+.tab.active { background:var(--accent); color:#041018; border-color:transparent; font-weight:600; }
+.tab .n { opacity:.85; font-size:.8rem; margin-left:.35rem; }
+.filters {
+  display:flex; flex-wrap:wrap; gap:.6rem; align-items:end;
+  padding:.85rem 1.25rem; border-bottom:1px solid var(--border);
+}
+.filters label { display:flex; flex-direction:column; gap:.2rem; font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+.filters input, .filters select {
+  background:var(--panel); color:var(--text); border:1px solid var(--border);
+  border-radius:8px; padding:.4rem .55rem; min-width:7rem; font-size:.9rem;
+}
+.filters input[type="search"] { min-width:12rem; }
+.filters input[type="checkbox"] { min-width:auto; width:1rem; height:1rem; }
+.chk { flex-direction:row !important; align-items:center; gap:.4rem !important; text-transform:none !important; letter-spacing:0 !important; font-size:.85rem !important; color:var(--text) !important; padding-bottom:.35rem; }
+.stats { padding:.5rem 1.25rem; color:var(--muted); font-size:.85rem; }
+table { width:100%; border-collapse:collapse; font-size:.88rem; }
+th, td { padding:.45rem .55rem; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+th { position:sticky; top:0; background:var(--panel2); color:var(--muted); font-weight:600; font-size:.75rem; text-transform:uppercase; letter-spacing:.03em; z-index:1; }
+tr:nth-child(even) td { background:var(--row-alt); }
+tr:nth-child(odd) td { background:var(--row); }
+tr:hover td { background:#1e2b3f; }
+a { color:var(--accent); text-decoration:none; }
+a:hover { text-decoration:underline; }
+.num { font-variant-numeric: tabular-nums; text-align:right !important; white-space:nowrap; }
+.badge {
+  display:inline-block; padding:.1rem .4rem; border-radius:6px; font-size:.72rem;
+  background:#243b55; color:#9ec5ea;
+}
+.badge.stairs { background:#1e3d32; color:var(--accent2); }
+.badge.src { background:#2a3142; color:#a9b4c7; }
+.section { padding:0 0 2rem; }
+.unknown-note { color:var(--warn); padding:0 1.25rem .5rem; font-size:.85rem; }
+.empty { padding:2rem 1.25rem; color:var(--muted); }
+footer { padding:1rem 1.25rem 2rem; color:var(--muted); font-size:.78rem; border-top:1px solid var(--border); }
+.wrap { overflow-x:auto; padding:0 0.5rem 0 0.75rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FlatSearcher CZ</h1>
+  <div class="meta">Prodej · osobní vlastnictví · floor ≥ 2 (1 = přízemí) · mezonet kept · generated __GENERATED__</div>
+</header>
+<nav class="tabs" id="tabs"></nav>
+<section class="filters" id="filters">
+  <label>Layout
+    <select id="f-layout"><option value="">All</option></select>
+  </label>
+  <label>Kč/m² min
+    <input id="f-kc-min" type="number" step="1000" placeholder="e.g. 50000"/>
+  </label>
+  <label>Kč/m² max
+    <input id="f-kc-max" type="number" step="1000" placeholder="e.g. 150000"/>
+  </label>
+  <label>Floor min
+    <input id="f-floor-min" type="number" min="2" placeholder="2"/>
+  </label>
+  <label>District
+    <select id="f-district"><option value="">All</option></select>
+  </label>
+  <label class="chk"><input id="f-stairs" type="checkbox"/> Internal stairs only</label>
+  <label>Search
+    <input id="f-q" type="search" placeholder="street, notes, url…"/>
+  </label>
+</section>
+<div class="stats" id="stats"></div>
+<p class="unknown-note" id="unknown-note" hidden></p>
+<section class="section">
+  <div class="wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th class="num">Kč/m²</th>
+          <th>Street</th>
+          <th>Disp</th>
+          <th class="num">m²</th>
+          <th class="num">Price</th>
+          <th>Floor</th>
+          <th>District</th>
+          <th>Stairs</th>
+          <th>Src</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="empty" hidden>No rows match filters.</div>
+</section>
+<footer>
+  Sources: Sreality (primary) · Bezrealitky · Reality.iDNES (secondary). Deduped by street+m²+price.
+  Floor unknown listed when detail lacked floorNumber/etage — not invented.
+</footer>
+<script>
+const DATA = __DATA__;
+const BUCKETS = [
+  {id:'karlin', label:'Karlín'},
+  {id:'prague', label:'Praha'},
+  {id:'decin', label:'Děčín'},
+  {id:'usti', label:'Ústí'},
+];
+let active = 'karlin';
+const layouts = __LAYOUTS__;
+
+function fmt(n){
+  if(n==null || n==='') return '—';
+  return Number(n).toLocaleString('cs-CZ');
+}
+function rowsFor(bucket){
+  const kept = (DATA.listings||[]).filter(r => r.region_bucket===bucket);
+  const unk = (DATA.floor_unknown||[]).filter(r => r.region_bucket===bucket);
+  return {kept, unk};
+}
+function allDistricts(bucket){
+  const {kept, unk} = rowsFor(bucket);
+  return [...new Set([...kept,...unk].map(r => r.district).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'cs'));
+}
+function initTabs(){
+  const el = document.getElementById('tabs');
+  el.innerHTML = '';
+  for(const b of BUCKETS){
+    const {kept, unk} = rowsFor(b.id);
+    const btn = document.createElement('button');
+    btn.className = 'tab'+(b.id===active?' active':'');
+    btn.type='button';
+    btn.innerHTML = `${b.label}<span class="n">${kept.length}</span>`;
+    btn.onclick = () => { active=b.id; [...el.children].forEach(c=>c.classList.remove('active')); btn.classList.add('active'); refillDistricts(); render(); };
+    el.appendChild(btn);
+  }
+}
+function refillLayouts(){
+  const sel = document.getElementById('f-layout');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All</option>' + layouts.map(l=>`<option value="${l}">${l}</option>`).join('');
+  sel.value = cur;
+}
+function refillDistricts(){
+  const sel = document.getElementById('f-district');
+  const cur = sel.value;
+  const opts = allDistricts(active);
+  sel.innerHTML = '<option value="">All</option>' + opts.map(d=>`<option value="${d.replaceAll('"','&quot;')}">${d}</option>`).join('');
+  if(opts.includes(cur)) sel.value = cur;
+}
+function applyFilters(list){
+  const layout = document.getElementById('f-layout').value;
+  const kcMin = Number(document.getElementById('f-kc-min').value||'');
+  const kcMax = Number(document.getElementById('f-kc-max').value||'');
+  const flMin = Number(document.getElementById('f-floor-min').value||'');
+  const district = document.getElementById('f-district').value;
+  const stairs = document.getElementById('f-stairs').checked;
+  const q = (document.getElementById('f-q').value||'').trim().toLowerCase();
+  return list.filter(r => {
+    if(layout && r.disposition !== layout) return false;
+    if(kcMin && !(r.kc_m2 >= kcMin)) return false;
+    if(kcMax && !(r.kc_m2 <= kcMax)) return false;
+    if(flMin){
+      const fn = r.floor_number != null ? Number(r.floor_number) : Number(String(r.floor||'').split('/')[0]);
+      if(!fn || fn < flMin) return false;
+    }
+    if(district && r.district !== district) return false;
+    if(stairs && !r.has_internal_stairs) return false;
+    if(q){
+      const blob = `${r.street||''} ${r.notes||''} ${r.url||''} ${r.district||''}`.toLowerCase();
+      if(!blob.includes(q)) return false;
+    }
+    return true;
+  });
+}
+function renderTable(rows, startIdx, unknown){
+  return rows.map((r,i) => {
+    const stairs = r.has_internal_stairs ? '<span class="badge stairs">stairs</span>' : '—';
+    const street = r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.street||'?'}</a>` : (r.street||'?');
+    const note = (r.notes||'').replaceAll('<','&lt;');
+    return `<tr>
+      <td class="num">${startIdx+i}${unknown?'*':''}</td>
+      <td class="num">${fmt(r.kc_m2)}</td>
+      <td>${street}</td>
+      <td>${r.disposition||''}</td>
+      <td class="num">${fmt(r.m2)}</td>
+      <td class="num">${fmt(r.price_czk)}</td>
+      <td>${r.floor|| (unknown?'?':'—')}</td>
+      <td>${r.district||''}</td>
+      <td>${stairs}</td>
+      <td><span class="badge src">${r.source||''}</span></td>
+      <td>${note}</td>
+    </tr>`;
+  }).join('');
+}
+function render(){
+  const {kept, unk} = rowsFor(active);
+  const fk = applyFilters(kept);
+  const fu = applyFilters(unk);
+  document.getElementById('stats').textContent =
+    `${BUCKETS.find(b=>b.id===active).label}: showing ${fk.length}/${kept.length} kept` +
+    (fu.length||unk.length ? `, floor-unknown ${fu.length}/${unk.length}` : '') +
+    ` · sort Kč/m² asc`;
+  const note = document.getElementById('unknown-note');
+  if(unk.length){
+    note.hidden=false;
+    note.textContent = `Floor unknown (${unk.length} in bucket): marked with * — floor not stated after detail fetch; not invented.`;
+  } else {
+    note.hidden=true;
+  }
+  const tb = document.getElementById('tbody');
+  tb.innerHTML = renderTable(fk, 1, false) + renderTable(fu, fk.length+1, true);
+  document.getElementById('empty').hidden = (fk.length+fu.length) > 0;
+}
+for(const id of ['f-layout','f-kc-min','f-kc-max','f-floor-min','f-district','f-stairs','f-q']){
+  document.getElementById(id).addEventListener('input', render);
+  document.getElementById(id).addEventListener('change', render);
+}
+refillLayouts();
+initTabs();
+refillDistricts();
+render();
+</script>
+</body>
+</html>
+'''
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--listings",
+        default=str(config.DATA / "listings.json"),
+    )
+    p.add_argument(
+        "-o",
+        "--output",
+        default=str(config.SITE / "index.html"),
+    )
+    args = p.parse_args(argv)
+    data = json.loads(Path(args.listings).read_text())
+    # Slim payload for HTML: drop excluded (huge)
+    slim = {
+        "generated": data.get("generated"),
+        "counts": data.get("counts"),
+        "listings": data.get("listings") or [],
+        "floor_unknown": data.get("floor_unknown") or [],
+    }
+    html = (
+        TEMPLATE.replace("__GENERATED__", str(slim.get("generated") or ""))
+        .replace("__DATA__", json.dumps(slim, ensure_ascii=False))
+        .replace("__LAYOUTS__", json.dumps(config.LAYOUTS, ensure_ascii=False))
+    )
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html)
+    # GitHub Pages often uses /docs
+    docs_out = config.DOCS / "index.html"
+    docs_out.parent.mkdir(parents=True, exist_ok=True)
+    docs_out.write_text(html)
+    MIRROR_WORKSPACE.parent.mkdir(parents=True, exist_ok=True)
+    MIRROR_WORKSPACE.write_text(html)
+    MIRROR_KARLIN.write_text(html)
+    print(f"wrote {out} ({len(html)} bytes) + {docs_out} + mirrors")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
